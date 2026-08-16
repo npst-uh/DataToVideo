@@ -41,21 +41,7 @@ cv::Mat createFrame(std::vector<bool>& input, int width=1920, int height=1080, i
     return frame;
 }
 
-std::vector<cv::Mat> buildFrames(std::vector<bool>& input, int width=1920, int height=1080, int density = 1){
-    std::vector<std::vector<bool>> chunks = splitVector(input, ((width/density)*(height/density)));
-    std::vector<cv::Mat> frames;
-    for(int i = 0; i < chunks.size(); i++){
-        frames.push_back(createFrame(chunks[i], width, height, density));
-    }
-    return frames;
-}
-
-void createVideoFromFrames(const std::vector<cv::Mat>& frames, const std::string& filename, int width = 1920, int height = 1080, double fps = 30.0) {
-    if (frames.empty()) {
-        std::cerr << "Error: No frames to write!" << std::endl;
-        return;
-    }
-    
+void createVideoFromFrames(const std::vector<bool>& input, const std::string& filename, int width = 1920, int height = 1080, int density = 1, double fps = 30.0) {
     int fourcc = cv::VideoWriter::fourcc('m', 'p', '4', 'v'); //mp4
     
     cv::VideoWriter writer(filename, fourcc, fps, cv::Size(width, height));
@@ -65,7 +51,10 @@ void createVideoFromFrames(const std::vector<cv::Mat>& frames, const std::string
         return;
     }
 
-    for (const auto& frame : frames) {
+    std::vector<std::vector<bool>> chunks = splitVector(input, ((width/density)*(height/density)));
+    std::vector<cv::Mat> frames;
+    for(int i = 0; i < chunks.size(); i++){
+        cv::Mat frame = createFrame(chunks[i], width, height, density);
         writer.write(frame);
     }
 
@@ -101,5 +90,5 @@ int main(int argc, char* argv[]){
 
     file.close();
 
-    createVideoFromFrames(buildFrames(data, width, height, density), "output.mp4", width, height, 60);
+    createVideoFromFrames(data, "output.mp4", width, height, density, 60);
 }
