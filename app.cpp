@@ -10,39 +10,42 @@ std::vector<std::vector<T>> splitVector(const std::vector<T>& input, size_t chun
     if (chunkSize == 0) return chunks;
 
     for (size_t i = 0; i < input.size(); i += chunkSize) {
-        // Berechnen, wo dieser Chunk endet (entweder nach chunkSize Elementen oder am Ende des Vektors)
+        
         auto begin = input.begin() + i;
         auto end = input.begin() + std::min(i + chunkSize, input.size());
 
-        // Nutzt den Bereichs-Konstruktor von std::vector
         chunks.emplace_back(begin, end);
     }
 
     return chunks;
 }
 
-cv::Mat createFrame(std::vector<bool>& input, int width=1920, int height=1080){
-    size_t max_bits = static_cast<size_t>(width) * height;
+cv::Mat createFrame(std::vector<bool>& input, int width=1920, int height=1080, int density = 1){
+    size_t max_bits = (static_cast<size_t>(width) * height)/density;
     if (input.size() > max_bits) {
         throw std::invalid_argument("Array bigger than frame capacity!");
     }
 
     cv::Mat frame = cv::Mat::zeros(height, width, CV_8UC3);
     for(int i = 0; i < input.size(); i++){
-        int x = i % width;
-        int y = i / width;
+        int x = i % (width/density);
+        int y = i / (width/density);
         if(input[i] == true){
-            frame.at<cv::Vec3b>(y, x) = cv::Vec3b(255, 255, 255);
+            for(int i = 0; i < density; i++){
+                for(int k = 0; k < density; k++){
+                    frame.at<cv::Vec3b>((y * density + i), (x * density + k)) = cv::Vec3b(255, 255, 255);
+                }
+            }
         }
     }
     return frame;
 }
 
-std::vector<cv::Mat> buildFrames(std::vector<bool>& input, int width=1920, int height=1080){
-    std::vector<std::vector<bool>> chunks = splitVector(input, (width*height));
+std::vector<cv::Mat> buildFrames(std::vector<bool>& input, int width=1920, int height=1080, int density = 1){
+    std::vector<std::vector<bool>> chunks = splitVector(input, ((width/density)*(height/density)));
     std::vector<cv::Mat> frames;
     for(int i = 0; i < chunks.size(); i++){
-        frames.push_back(createFrame(chunks[i], width, height));
+        frames.push_back(createFrame(chunks[i], width, height, density));
     }
     return frames;
 }
@@ -71,8 +74,9 @@ void createVideoFromFrames(const std::vector<cv::Mat>& frames, const std::string
 }
 
 int main(int argc, char* argv[]){
-    int width = 640;
-    int height = 480;
+    int width = 1920;
+    int height = 1080;
+    int density = 16;
 
     if (argc < 2) {
         std::cerr << "Usage: " << argv[0] << " <input-file>" << std::endl;
@@ -97,6 +101,5 @@ int main(int argc, char* argv[]){
 
     file.close();
 
-    createVideoFromFrames(buildFrames(data, width, height), "output.mp4", width, height);
-
+    createVideoFromFrames(buildFrames(data, width, height, density), "output.mp4", width, height, 60);
 }
