@@ -1,0 +1,102 @@
+#include <iostream>
+#include <vector>
+#include <fstream>
+#include <opencv2/opencv.hpp>
+
+template <typename T>
+std::vector<std::vector<T>> splitVector(const std::vector<T>& input, size_t chunkSize) {
+    std::vector<std::vector<T>> chunks;
+    
+    if (chunkSize == 0) return chunks;
+
+    for (size_t i = 0; i < input.size(); i += chunkSize) {
+        // Berechnen, wo dieser Chunk endet (entweder nach chunkSize Elementen oder am Ende des Vektors)
+        auto begin = input.begin() + i;
+        auto end = input.begin() + std::min(i + chunkSize, input.size());
+
+        // Nutzt den Bereichs-Konstruktor von std::vector
+        chunks.emplace_back(begin, end);
+    }
+
+    return chunks;
+}
+
+cv::Mat createFrame(std::vector<bool>& input, int width=1920, int height=1080){
+    size_t max_bits = static_cast<size_t>(width) * height;
+    if (input.size() > max_bits) {
+        throw std::invalid_argument("Array bigger than frame capacity!");
+    }
+
+    cv::Mat frame = cv::Mat::zeros(height, width, CV_8UC3);
+    for(int i = 0; i < input.size(); i++){
+        int x = i % width;
+        int y = i / width;
+        if(input[i] == true){
+            frame.at<cv::Vec3b>(y, x) = cv::Vec3b(255, 255, 255);
+        }
+    }
+    return frame;
+}
+
+std::vector<cv::Mat> buildFrames(std::vector<bool>& input, int width=1920, int height=1080){
+    std::vector<std::vector<bool>> chunks = splitVector(input, (width*height));
+    std::vector<cv::Mat> frames;
+    for(int i = 0; i < chunks.size(); i++){
+        frames.push_back(createFrame(chunks[i], width, height));
+    }
+    return frames;
+}
+
+void createVideoFromFrames(const std::vector<cv::Mat>& frames, const std::string& filename, int width = 1920, int height = 1080, double fps = 30.0) {
+    if (frames.empty()) {
+        std::cerr << "Error: No frames to write!" << std::endl;
+        return;
+    }
+    
+    int fourcc = cv::VideoWriter::fourcc('m', 'p', '4', 'v'); //mp4
+    
+    cv::VideoWriter writer(filename, fourcc, fps, cv::Size(width, height));
+
+    if (!writer.isOpened()) {
+        std::cerr << "Error while trying to open writer!" << std::endl;
+        return;
+    }
+
+    for (const auto& frame : frames) {
+        writer.write(frame);
+    }
+
+    writer.release();
+    std::cout << "Video erfolgreich gespeichert unter: " << filename << std::endl;
+}
+
+int main(int argc, char* argv[]){
+    int width = 640;
+    int height = 480;
+
+    if (argc < 2) {
+        std::cerr << "Usage: " << argv[0] << " <input-file>" << std::endl;
+        return 1;
+    }
+    std::ifstream file(argv[1], std::ios::binary);
+
+    if (!file.is_open()) {
+        std::cerr << "Not able to open file" << std::endl;
+        return 1;
+    }
+    
+    std::vector<bool> data;
+    char byte;
+    
+    while(file.get(byte)) {
+        for(int i = 7; i>=0; i--){
+            bool bit = (byte >> i) & 1;
+            data.push_back(bit);
+        }
+    }
+
+    file.close();
+
+    createVideoFromFrames(buildFrames(data, width, height), "output.mp4", width, height);
+
+}
