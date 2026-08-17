@@ -1,8 +1,6 @@
 #include <iostream>
-#include <vector>
 #include <fstream>
-#include <opencv2/opencv.hpp>
-#include <encoder.cpp>
+#include "encoder.hpp"
 
 int main(int argc, char* argv[]){
     int width = 1920;
@@ -17,22 +15,8 @@ int main(int argc, char* argv[]){
     }
     std::ifstream file(argv[1], std::ios::binary);
 
-    if (!file.is_open()) {
-        std::cerr << "Not able to open file" << std::endl;
-        return 1;
-    }
-    
-    std::vector<bool> data;
-    char byte;
-    
-    while(file.get(byte)) {
-        for(int i = 7; i>=0; i--){
-            bool bit = (byte >> i) & 1;
-            data.push_back(bit);
-        }
-    }
+    encoder.createVideo(file);
 
     file.close();
-
-    encoder.createVideo(data);
+    return 0;
 }

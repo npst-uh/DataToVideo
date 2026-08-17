@@ -2,90 +2,66 @@
 #include <vector>
 #include <fstream>
 #include <opencv2/opencv.hpp>
+#include "encoder.hpp"
 
-template <typename T>
-std::vector<std::vector<T>> splitVector(const std::vector<T>& input, size_t chunkSize) {
-    std::vector<std::vector<T>> chunks;
-    
-    if (chunkSize == 0) return chunks;
 
-    for (size_t i = 0; i < input.size(); i += chunkSize) {
-        
-        auto begin = input.begin() + i;
-        auto end = input.begin() + std::min(i + chunkSize, input.size());
 
-        chunks.emplace_back(begin, end);
-    }
 
-    return chunks;
+Encoder::Encoder(std::string filename_, int width_, int height_, int density_, int fps_){
+    filename = filename_;
+    width = width_;
+    height = height_;
+    density = density_;
+    fps = fps_;
+    cols = width / density;
+    rows = height / density;
+    int fourcc = cv::VideoWriter::fourcc('m', 'p', '4', 'v'); //mp4
+    writer = cv::VideoWriter(filename, fourcc, fps, cv::Size(width, height));
 }
 
-class Encoder {
-    private:
-        int width;
-        int height;
-        int density;
-        int cols;
-        int rows;
-        int fps;
-        std::string filename;
-        cv::VideoWriter writer;
-        
-    public: 
+cv::Mat Encoder::createFrame(const std::vector<char>& buffer, std::streamsize bytesRead){
+    size_t max_bits = (static_cast<size_t>(rows) * (cols));
+    cv::Mat frame = cv::Mat::zeros(height, width, CV_8UC1);
+    size_t totalBits = static_cast<size_t>(bytesRead) * 8;
 
-        Encoder(std::string filename_, int width_ = 1920, int height_ = 1080, int density_ = 1, int fps_ = 60){
-            filename = filename_;
-            width = width_;
-            height = height_;
-            density = density_;
-            fps = fps_;
-            cols = width / density;
-            rows = height / density;
-            int fourcc = cv::VideoWriter::fourcc('m', 'p', '4', 'v'); //mp4
-            writer = cv::VideoWriter(filename, fourcc, fps, cv::Size(width, height));
+    for(int i = 0; i < totalBits; ++i){
+        uint8_t byte = static_cast<uint8_t>(buffer[i / 8]);
+        bool bit = (byte >> (7 - (i % 8))) & 1;
+        if (bit) {
+            int x = (i % cols) * density;
+            int y = (i / cols) * density;
+            cv::Rect block(x, y, density, density);
+            frame(block).setTo(255);
         }
-
-        cv::Mat createFrame(const std::vector<bool>& input){
-            size_t max_bits = (static_cast<size_t>(rows) * (cols));
-            if (input.size() > max_bits) {
-                throw std::invalid_argument("Array bigger than frame capacity!");
-            }
-
-            cv::Mat frame = cv::Mat::zeros(height, width, CV_8UC1);
-            for(int i = 0; i < input.size(); i++){
-                if (input[i]) {
-                    int x = (i % cols) * density;
-                    int y = (i / cols) * density;
-                    cv::Rect block(x, y, density, density);
-                    frame(block).setTo(255);
-                }
-            }
-            cv::Mat colorFrame;
-            cv::cvtColor(frame, colorFrame, cv::COLOR_GRAY2BGR);
-            return colorFrame;
-        }
+    }
+    cv::Mat colorFrame;
+    cv::cvtColor(frame, colorFrame, cv::COLOR_GRAY2BGR);
+    return colorFrame;
+}
         
-        void createVideo(const std::vector<bool>& inputData){
-            if (!writer.isOpened()) {
-                std::cerr << "Error while trying to open writer!" << std::endl;
-                return;
-            }
-            
-            size_t bitsPerFrame = static_cast<size_t>(cols) * rows;
-            size_t totalBits = inputData.size();
+void Encoder::createVideo(std::ifstream& file){
+    if (!file.is_open()) {
+        std::cerr << "Not able to open file" << std::endl;
+        return;
+    }
 
-            for (size_t i = 0; i < totalBits; i += bitsPerFrame) {
-                auto begin = inputData.begin() + i;
-                auto end = inputData.begin() + std::min(i + bitsPerFrame, totalBits);
+    if (!writer.isOpened()) {
+        std::cerr << "Error while trying to open writer!" << std::endl;
+        return;
+    }
+    
+    size_t bitsPerFrame = static_cast<size_t>(cols) * rows;
+    size_t bytesPerFrame = bitsPerFrame / 8;
+    std::vector<char> buffer(bytesPerFrame);
 
-                std::vector<bool> chunk(begin, end);
-                cv::Mat frame = createFrame(chunk);
-                writer.write(frame);
-            }
+    while (file.read(buffer.data(), bytesPerFrame) || file.gcount() > 0) {
+        std::streamsize bytesRead = file.gcount(); // Tatsächlich gelesene Bytes
 
-            writer.release();
-            std::cout << "Video successfully written to: " << filename << std::endl;
-        
-        }
+        cv::Mat frame = createFrame(buffer, bytesRead);
+        writer.write(frame);
+    }
 
-};
+    writer.release();
+    std::cout << "Video successfully written to: " << filename << std::endl;
+
+}
