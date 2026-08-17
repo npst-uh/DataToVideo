@@ -2,10 +2,9 @@
 #include <vector>
 #include <fstream>
 #include <opencv2/opencv.hpp>
+#include <future>
+#include <queue>
 #include "encoder.hpp"
-
-
-
 
 Encoder::Encoder(std::string filename_, int width_, int height_, int density_, int fps_){
     filename = filename_;
@@ -49,16 +48,33 @@ void Encoder::createVideo(std::ifstream& file){
         std::cerr << "Error while trying to open writer!" << std::endl;
         return;
     }
-    
+
+    const size_t BUFFER_SIZE = std::thread::hardware_concurrency(); 
+    std::queue<std::future<cv::Mat>> frameQueue;
+
     size_t bitsPerFrame = static_cast<size_t>(cols) * rows;
     size_t bytesPerFrame = bitsPerFrame / 8;
-    std::vector<char> buffer(bytesPerFrame);
 
-    while (file.read(buffer.data(), bytesPerFrame) || file.gcount() > 0) {
-        std::streamsize bytesRead = file.gcount(); // Tatsächlich gelesene Bytes
+    while(true){
+        while(frameQueue.size() < BUFFER_SIZE){
+            std::vector<char> buffer(bytesPerFrame);
+            if (!(file.read(buffer.data(), bytesPerFrame) || file.gcount() > 0)) {
+                break; //End fo file reached
+            }
+            std::streamsize bytesRead = file.gcount();
+            
+            frameQueue.push(std::async(std::launch::async, [this, buf = std::move(buffer), bytesRead](){
+                return createFrame(buf, bytesRead);
+            }));
+        }
 
-        cv::Mat frame = createFrame(buffer, bytesRead);
+        if (frameQueue.empty()) {
+            break;
+        }
+        
+        cv::Mat frame = frameQueue.front().get();
         writer.write(frame);
+        frameQueue.pop();
     }
 
     writer.release();
