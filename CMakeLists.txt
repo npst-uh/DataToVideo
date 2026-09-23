@@ -18,6 +18,7 @@ include_directories(
 add_executable(video_encoder
     main.cpp
     encoder.cpp
+    decoder.cpp
 )
 
 # 3. Bibliotheken verknüpfen

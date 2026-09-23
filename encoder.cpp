@@ -5,6 +5,16 @@
 #include <future>
 #include <queue>
 #include "encoder.hpp"
+#include "format.hpp"
+
+std::streampos calcFileSize( std::ifstream& file ){
+    std::streampos current = file.tellg();
+    file.seekg( 0, std::ios::end );
+    std::streampos fsize = file.tellg();
+    file.seekg(current);
+
+    return fsize;
+}
 
 Encoder::Encoder(std::string filename_, int width_, int height_, int density_, int fps_){
     filename = filename_;
@@ -19,16 +29,16 @@ Encoder::Encoder(std::string filename_, int width_, int height_, int density_, i
 }
 
 cv::Mat Encoder::createFrame(const std::vector<char>& buffer, std::streamsize bytesRead){
-    size_t max_bits = (static_cast<size_t>(rows) * (cols));
     cv::Mat frame = cv::Mat::zeros(height, width, CV_8UC1);
     size_t totalBits = static_cast<size_t>(bytesRead) * 8;
+    size_t capacity = static_cast<size_t>(rows) * cols;
 
-    for(int i = 0; i < totalBits; ++i){
+    for(size_t i = 0; i < std::min(totalBits, capacity); ++i){
         uint8_t byte = static_cast<uint8_t>(buffer[i / 8]);
         bool bit = (byte >> (7 - (i % 8))) & 1;
         if (bit) {
-            int x = (i % cols) * density;
-            int y = (i / cols) * density;
+            int x = static_cast<int>(i % cols) * density;
+            int y = static_cast<int>(i / cols) * density;
             cv::Rect block(x, y, density, density);
             frame(block).setTo(255);
         }
@@ -39,6 +49,26 @@ cv::Mat Encoder::createFrame(const std::vector<char>& buffer, std::streamsize by
 }
         
 void Encoder::createVideo(std::ifstream& file){
+
+    const size_t BUFFER_SIZE = std::max<size_t>(1, std::thread::hardware_concurrency());
+    std::queue<std::future<cv::Mat>> frameQueue;
+
+    std::streampos fileSize = calcFileSize(file);
+    if(fileSize < 0){
+        std::cerr << "Error: Not able to determine file size" << std::endl;
+        return;
+    }
+    
+    //Erstellen des Header Frames: fürs erste enthält dieser nur die fileSize, später erweiterbar
+    Header header{{'D', '2', 'V', '1'}, static_cast<uint64_t>(fileSize),
+                  static_cast<uint16_t>(density)};
+
+    std::vector<char> headerBuffer(sizeof(header));
+    std::memcpy(headerBuffer.data(), &header, sizeof(header));
+    frameQueue.push(std::async(std::launch::async, [this, buf = std::move(headerBuffer)](){
+                return createFrame(buf, sizeof(header));
+            }));
+
     if (!file.is_open()) {
         std::cerr << "Not able to open file" << std::endl;
         return;
@@ -48,9 +78,6 @@ void Encoder::createVideo(std::ifstream& file){
         std::cerr << "Error while trying to open writer!" << std::endl;
         return;
     }
-
-    const size_t BUFFER_SIZE = std::thread::hardware_concurrency(); 
-    std::queue<std::future<cv::Mat>> frameQueue;
 
     size_t bitsPerFrame = static_cast<size_t>(cols) * rows;
     size_t bytesPerFrame = bitsPerFrame / 8;
