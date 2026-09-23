@@ -5,6 +5,7 @@
 #include <future>
 #include <queue>
 #include <cstring>
+#include <filesystem>
 #include "decoder.hpp"
 
 Decoder::Decoder(std::string filename_, int density){
@@ -51,12 +52,6 @@ int Decoder::reconvertFile(std::string video){
         return -1;
     }
 
-    std::ofstream outFile(filename, std::ios::binary);
-    if (!outFile.is_open()) {
-        std::cerr << "Fehler beim Erstellen der Ausgabedatei!" << std::endl;
-        return -1;
-    }
-
     cv::Mat frame;
     frameCount = 0;
 
@@ -79,6 +74,14 @@ int Decoder::reconvertFile(std::string video){
     }
     if (header.density != density) {
         std::cerr << "Decoder density does not match header" << std::endl;
+        return -1;
+    }
+
+    std::filesystem::path outputPath(filename);
+    outputPath.replace_extension(header.fileExtension);
+    std::ofstream outFile(outputPath, std::ios::binary);
+    if (!outFile.is_open()) {
+        std::cerr << "Fehler beim Erstellen der Ausgabedatei!" << std::endl;
         return -1;
     }
 

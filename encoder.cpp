@@ -4,6 +4,7 @@
 #include <opencv2/opencv.hpp>
 #include <future>
 #include <queue>
+#include <cstring>
 #include "encoder.hpp"
 #include "format.hpp"
 
@@ -48,7 +49,7 @@ cv::Mat Encoder::createFrame(const std::vector<char>& buffer, std::streamsize by
     return colorFrame;
 }
         
-void Encoder::createVideo(std::ifstream& file){
+void Encoder::createVideo(std::ifstream& file, const std::string& fileExtension){
 
     const size_t BUFFER_SIZE = std::max<size_t>(1, std::thread::hardware_concurrency());
     std::queue<std::future<cv::Mat>> frameQueue;
@@ -58,10 +59,17 @@ void Encoder::createVideo(std::ifstream& file){
         std::cerr << "Error: Not able to determine file size" << std::endl;
         return;
     }
-    
+
+    if (fileExtension.size() >= sizeof(Header::fileExtension)) {
+        std::cerr << "Error: File extension is too long for the header" << std::endl;
+        return;
+    }
+
     //Erstellen des Header Frames: fürs erste enthält dieser nur die fileSize, später erweiterbar
-    Header header{{'D', '2', 'V', '1'}, static_cast<uint64_t>(fileSize),
+    Header header{{'D', '2', 'V', '1'}, static_cast<uint64_t>(fileSize), {},
                   static_cast<uint16_t>(density)};
+    std::strncpy(header.fileExtension, fileExtension.c_str(),
+                 sizeof(header.fileExtension) - 1);
 
     std::vector<char> headerBuffer(sizeof(header));
     std::memcpy(headerBuffer.data(), &header, sizeof(header));

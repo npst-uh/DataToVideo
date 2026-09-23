@@ -1,5 +1,6 @@
 #include <iostream>
 #include <fstream>
+#include <filesystem>
 #include "encoder.hpp"
 #include "decoder.hpp"
 
@@ -27,7 +28,8 @@ int main(int argc, char* argv[]){
     Encoder encoder("output.mp4", width, height, density, fps);
     std::ifstream file(argv[1], std::ios::binary);
 
-    encoder.createVideo(file);
+    std::string fileExtension = std::filesystem::path(argv[1]).extension().string();
+    encoder.createVideo(file, fileExtension);
 
     file.close();
     return 0;

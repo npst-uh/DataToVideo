@@ -35,7 +35,7 @@ private:
 public:
     Encoder(std::string filename_, int width_ = 1920, int height_ = 1080, int density_ = 1, int fps_ = 60);
     cv::Mat createFrame(const std::vector<char>& buffer, std::streamsize bytesRead);
-    void createVideo(std::ifstream& file);
+    void createVideo(std::ifstream& file, const std::string& fileExtension);
 };
 
 #endif // ENCODER_HPP
